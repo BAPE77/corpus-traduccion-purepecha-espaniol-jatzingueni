@@ -1,0 +1,218 @@
+%% ============================================================================
+%% J'atzingueni Corpus Database - Entity Relationship Diagram (Mermaid)
+%% ============================================================================
+%% This diagram represents the complete database schema for the
+%% Purépecha-Spanish parallel corpus with support for:
+%% - Morphological annotations (agglutinative features)
+%% - Automated and manual workflows
+%% - Quality metrics tracking
+%% - Dialectal variation (PostGIS)
+%% ============================================================================
+
+erDiagram
+    %% ========================================================================
+    %% CORE ENTITIES: Sources and Documents
+    %% ========================================================================
+    
+    sources ||--o{ documents : "contains"
+    sources {
+        uuid source_id PK
+        varchar source_name
+        enum source_type "jw_org, biblical, manual, community"
+        text source_url
+        text description
+        jsonb metadata
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    documents {
+        uuid document_id PK
+        uuid source_id FK
+        varchar document_identifier "e.g., Genesis_1"
+        varchar title
+        enum language "tsz, es, en"
+        jsonb metadata
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    %% ========================================================================
+    %% SENTENCES: Core linguistic data
+    %% ========================================================================
+    
+    documents ||--o{ sentences : "contains"
+    sentences {
+        uuid sentence_id PK
+        uuid document_id FK
+        integer sentence_order
+        enum language "tsz, es, en"
+        text text "Original sentence"
+        text normalized_text "Cleaned version"
+        tsvector text_vector "Full-text search"
+        text[] morphemes "Morpheme array"
+        text[] morphological_tags "Tags for morphemes"
+        enum dialect "central, western, eastern"
+        jsonb dialectal_features
+        geometry collection_location "PostGIS point"
+        jsonb metadata
+        enum quality_status "raw, auto_aligned, reviewed"
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    %% ========================================================================
+    %% ALIGNMENTS: Sentence pair alignments
+    %% ========================================================================
+    
+    sentences ||--o{ alignments : "purepecha_sentence"
+    sentences ||--o{ alignments : "spanish_sentence"
+    alignments ||--o| alignments : "parent_correction"
+    alignments {
+        uuid alignment_id PK
+        uuid purepecha_sentence_id FK
+        uuid spanish_sentence_id FK
+        enum alignment_method "fast_align, awesome_align, manual"
+        decimal alignment_score "0-1 confidence"
+        enum quality_status "auto_aligned, reviewed, validated"
+        jsonb word_alignments "Word-level data"
+        varchar corrected_by "User who corrected"
+        text correction_notes
+        integer version "Version control"
+        uuid parent_alignment_id FK "Previous version"
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    %% ========================================================================
+    %% MORPHOLOGICAL ANNOTATIONS: Token-level analysis
+    %% ========================================================================
+    
+    sentences ||--o{ morphological_annotations : "has"
+    morphological_annotations {
+        uuid annotation_id PK
+        uuid sentence_id FK
+        integer token_index "Position in sentence"
+        text token "Surface form"
+        text[] morphemes "Decomposed morphemes"
+        text[] morpheme_glosses "Glosses"
+        text[] morpheme_types "root, affix, suffix"
+        varchar pos_tag "Part of speech"
+        varchar upos "Universal POS"
+        jsonb features "Morphological features"
+        varchar annotation_method "automatic, manual"
+        varchar annotator
+        decimal confidence_score
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    %% ========================================================================
+    %% QUALITY METRICS: Pipeline and alignment quality
+    %% ========================================================================
+    
+    pipeline_runs ||--o{ alignment_quality_metrics : "produces"
+    alignments ||--o{ alignment_quality_metrics : "measured_by"
+    
+    pipeline_runs {
+        uuid run_id PK
+        varchar run_name
+        varchar pipeline_type "collection, alignment, export"
+        jsonb configuration "Pipeline parameters"
+        timestamp started_at
+        timestamp completed_at
+        varchar status "running, completed, failed"
+        text error_message
+        integer items_processed
+        integer items_succeeded
+        integer items_failed
+        jsonb metadata
+    }
+    
+    alignment_quality_metrics {
+        uuid metric_id PK
+        uuid alignment_id FK
+        uuid pipeline_run_id FK
+        decimal alignment_accuracy "PRIMARY METRIC"
+        decimal bleu_score "Secondary metric"
+        decimal ter_score "Translation Error Rate"
+        decimal length_ratio
+        integer corpus_size_tokens
+        integer vocabulary_size
+        decimal oov_rate "Out-of-vocabulary"
+        integer processing_time_ms
+        jsonb metrics_data "Additional metrics"
+        timestamp computed_at
+    }
+    
+    corpus_statistics {
+        uuid stat_id PK
+        timestamp computed_at
+        integer total_sentence_pairs
+        integer purepecha_sentences
+        integer spanish_sentences
+        integer auto_aligned_count
+        integer manually_reviewed_count
+        integer validated_count
+        decimal avg_alignment_accuracy
+        decimal avg_alignment_score
+        integer total_purepecha_tokens
+        integer total_spanish_tokens
+        integer purepecha_vocabulary_size
+        integer spanish_vocabulary_size
+        jsonb coverage_by_source "Distribution by source"
+        jsonb dialect_distribution "Dialectal statistics"
+        jsonb additional_stats
+    }
+    
+    %% ========================================================================
+    %% MANUAL ANNOTATION WORKFLOW: Human-in-the-loop
+    %% ========================================================================
+    
+    annotation_tasks ||--o{ annotation_decisions : "contains"
+    
+    annotation_tasks {
+        uuid task_id PK
+        varchar task_type "alignment_review, morphology"
+        varchar assigned_to "User/annotator"
+        integer priority "1-10 urgency"
+        jsonb target_items "Items to review"
+        varchar status "pending, in_progress, completed"
+        integer progress "Percentage"
+        timestamp created_at
+        timestamp started_at
+        timestamp completed_at
+        text notes
+        jsonb metadata
+    }
+    
+    annotation_decisions {
+        uuid decision_id PK
+        uuid task_id FK
+        varchar entity_type "sentence, alignment, morphology"
+        uuid entity_id "Reference to entity"
+        varchar decision_type "accept, reject, correct"
+        jsonb previous_value
+        jsonb new_value
+        varchar annotator
+        integer confidence "1-5 scale"
+        text notes
+        timestamp created_at
+    }
+    
+    %% ========================================================================
+    %% EXPORT: Data interoperability
+    %% ========================================================================
+    
+    export_jobs {
+        uuid export_id PK
+        varchar export_format "tmx, conllu, json, pytorch"
+        jsonb filter_criteria "What to export"
+        text output_path
+        bigint file_size_bytes
+        varchar status "pending, running, completed"
+        timestamp started_at
+        timestamp completed_at
+        integer records_exported
+        jsonb metadata
+    }
