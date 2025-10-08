@@ -14,8 +14,8 @@ erDiagram
     %% CORE ENTITIES: Sources and Documents
     %% ========================================================================
     
-    sources ||--o{ documents : "contains"
-    sources {
+    source ||--o{ document : "contains"
+    source {
         uuid source_id PK
         varchar source_name
         enum source_type "jw_org, biblical, manual, community"
@@ -26,7 +26,7 @@ erDiagram
         timestamp updated_at
     }
     
-    documents {
+    document {
         uuid document_id PK
         uuid source_id FK
         varchar document_identifier "e.g., Genesis_1"
@@ -41,8 +41,8 @@ erDiagram
     %% SENTENCES: Core linguistic data
     %% ========================================================================
     
-    documents ||--o{ sentences : "contains"
-    sentences {
+    document ||--o{ sentence : "contains"
+    sentence {
         uuid sentence_id PK
         uuid document_id FK
         integer sentence_order
@@ -65,10 +65,10 @@ erDiagram
     %% ALIGNMENTS: Sentence pair alignments
     %% ========================================================================
     
-    sentences ||--o{ alignments : "purepecha_sentence"
-    sentences ||--o{ alignments : "spanish_sentence"
-    alignments ||--o| alignments : "parent_correction"
-    alignments {
+    sentence ||--o{ alignment : "purepecha_sentence"
+    sentence ||--o{ alignment : "spanish_sentence"
+    alignment ||--o| alignment : "parent_correction"
+    alignment {
         uuid alignment_id PK
         uuid purepecha_sentence_id FK
         uuid spanish_sentence_id FK
@@ -87,9 +87,9 @@ erDiagram
     %% ========================================================================
     %% MORPHOLOGICAL ANNOTATIONS: Token-level analysis
     %% ========================================================================
-    
-    sentences ||--o{ morphological_annotations : "has"
-    morphological_annotations {
+
+    sentence ||--o{ morphological_annotation : "has"
+    morphological_annotation {
         uuid annotation_id PK
         uuid sentence_id FK
         integer token_index "Position in sentence"
@@ -111,10 +111,10 @@ erDiagram
     %% QUALITY METRICS: Pipeline and alignment quality
     %% ========================================================================
     
-    pipeline_runs ||--o{ alignment_quality_metrics : "produces"
-    alignments ||--o{ alignment_quality_metrics : "measured_by"
-    
-    pipeline_runs {
+    pipeline_run ||--o{ alignment_quality_metric : "produces"
+    alignment ||--o{ alignment_quality_metric : "measured_by"
+
+    pipeline_run {
         uuid run_id PK
         varchar run_name
         varchar pipeline_type "collection, alignment, export"
@@ -129,7 +129,7 @@ erDiagram
         jsonb metadata
     }
     
-    alignment_quality_metrics {
+    alignment_quality_metric {
         uuid metric_id PK
         uuid alignment_id FK
         uuid pipeline_run_id FK
@@ -145,7 +145,7 @@ erDiagram
         timestamp computed_at
     }
     
-    corpus_statistics {
+    corpus_statistic {
         uuid stat_id PK
         timestamp computed_at
         integer total_sentence_pairs
@@ -169,9 +169,9 @@ erDiagram
     %% MANUAL ANNOTATION WORKFLOW: Human-in-the-loop
     %% ========================================================================
     
-    annotation_tasks ||--o{ annotation_decisions : "contains"
+    annotation_task ||--o{ annotation_decision : "contains"
     
-    annotation_tasks {
+    annotation_task {
         uuid task_id PK
         varchar task_type "alignment_review, morphology"
         varchar assigned_to "User/annotator"
@@ -186,7 +186,7 @@ erDiagram
         jsonb metadata
     }
     
-    annotation_decisions {
+    annotation_decision {
         uuid decision_id PK
         uuid task_id FK
         varchar entity_type "sentence, alignment, morphology"
@@ -203,8 +203,8 @@ erDiagram
     %% ========================================================================
     %% EXPORT: Data interoperability
     %% ========================================================================
-    
-    export_jobs {
+
+    export_job {
         uuid export_id PK
         varchar export_format "tmx, conllu, json, pytorch"
         jsonb filter_criteria "What to export"
