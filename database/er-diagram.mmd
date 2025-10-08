@@ -16,22 +16,25 @@ erDiagram
     
     source ||--o{ document : "contains"
     source {
-        uuid source_id PK
-        varchar source_name
-        enum source_type "jw_org, biblical, manual, community"
-        text source_url
+        uuid id PK
+        varchar name
+        enum type "jw_org, biblical, manual, community"
+        text url
         text description
+        %% TODO: metadata should be its own defined columns
         jsonb metadata
         timestamp created_at
         timestamp updated_at
     }
     
     document {
-        uuid document_id PK
+        uuid id PK
         uuid source_id FK
-        varchar document_identifier "e.g., Genesis_1"
+        %% TODO: Should we remove this and just use title?
+        varchar identifier "e.g., Genesis_1"
         varchar title
         enum language "tsz, es, en"
+        %% TODO: expand metadata in its own columns
         jsonb metadata
         timestamp created_at
         timestamp updated_at
@@ -43,15 +46,22 @@ erDiagram
     
     document ||--o{ sentence : "contains"
     sentence {
-        uuid sentence_id PK
+        uuid id PK
         uuid document_id FK
-        integer sentence_order
+        integer index
         enum language "tsz, es, en"
+        %% TODO: Consider a unique clean sentence as "text"
+        %%       instead of original_text and normalized_text
         text text "Original sentence"
         text normalized_text "Cleaned version"
+
         tsvector text_vector "Full-text search"
+
+        %% TODO: consider removing morphemes and just use morphosyntactic annotations
+        %%       and some kind of index for spliting the word into morphemes
         text[] morphemes "Morpheme array"
         text[] morphological_tags "Tags for morphemes"
+        %% TODO: remove tsz dialect 
         enum dialect "central, western, eastern"
         jsonb dialectal_features
         geometry collection_location "PostGIS point"
@@ -65,13 +75,13 @@ erDiagram
     %% ALIGNMENTS: Sentence pair alignments
     %% ========================================================================
     
-    sentence ||--o{ alignment : "purepecha_sentence"
-    sentence ||--o{ alignment : "spanish_sentence"
+    sentence ||--o{ alignment : "tsz_sentence"
+    sentence ||--o{ alignment : "es_sentence"
     alignment ||--o| alignment : "parent_correction"
     alignment {
-        uuid alignment_id PK
-        uuid purepecha_sentence_id FK
-        uuid spanish_sentence_id FK
+        uuid id PK
+        uuid tsz_sentence_id FK
+        uuid es_sentence_id FK
         enum alignment_method "fast_align, awesome_align, manual"
         decimal alignment_score "0-1 confidence"
         enum quality_status "auto_aligned, reviewed, validated"
@@ -89,8 +99,10 @@ erDiagram
     %% ========================================================================
 
     sentence ||--o{ morphological_annotation : "has"
+    %% TODO: Make morphological annotations just be the allowed symbols for annotations,
+    %%       not the actual annotations themselves!
     morphological_annotation {
-        uuid annotation_id PK
+        uuid id PK
         uuid sentence_id FK
         integer token_index "Position in sentence"
         text token "Surface form"
@@ -106,7 +118,13 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
-    
+    %% TODO: include syntactic annotations too!
+
+%% NOTE from Aaron-Uriel: I think we shouldn't focus on the next entities just
+%%                        for now. These entities will be more useful if we
+%%                        have a working developing plantform for real users.
+
+
     %% ========================================================================
     %% QUALITY METRICS: Pipeline and alignment quality
     %% ========================================================================
@@ -115,8 +133,8 @@ erDiagram
     alignment ||--o{ alignment_quality_metric : "measured_by"
 
     pipeline_run {
-        uuid run_id PK
-        varchar run_name
+        uuid id PK
+        varchar name
         varchar pipeline_type "collection, alignment, export"
         jsonb configuration "Pipeline parameters"
         timestamp started_at
@@ -130,7 +148,7 @@ erDiagram
     }
     
     alignment_quality_metric {
-        uuid metric_id PK
+        uuid id PK
         uuid alignment_id FK
         uuid pipeline_run_id FK
         decimal alignment_accuracy "PRIMARY METRIC"
@@ -146,20 +164,20 @@ erDiagram
     }
     
     corpus_statistic {
-        uuid stat_id PK
+        uuid id PK
         timestamp computed_at
         integer total_sentence_pairs
-        integer purepecha_sentences
-        integer spanish_sentences
+        integer tsz_sentences
+        integer es_sentences
         integer auto_aligned_count
         integer manually_reviewed_count
         integer validated_count
         decimal avg_alignment_accuracy
         decimal avg_alignment_score
-        integer total_purepecha_tokens
-        integer total_spanish_tokens
-        integer purepecha_vocabulary_size
-        integer spanish_vocabulary_size
+        integer total_tsz_tokens
+        integer total_es_tokens
+        integer tsz_vocabulary_size
+        integer es_vocabulary_size
         jsonb coverage_by_source "Distribution by source"
         jsonb dialect_distribution "Dialectal statistics"
         jsonb additional_stats
@@ -172,8 +190,8 @@ erDiagram
     annotation_task ||--o{ annotation_decision : "contains"
     
     annotation_task {
-        uuid task_id PK
-        varchar task_type "alignment_review, morphology"
+        uuid id PK
+        varchar type "alignment_review, morphology"
         varchar assigned_to "User/annotator"
         integer priority "1-10 urgency"
         jsonb target_items "Items to review"
@@ -187,7 +205,7 @@ erDiagram
     }
     
     annotation_decision {
-        uuid decision_id PK
+        uuid id PK
         uuid task_id FK
         varchar entity_type "sentence, alignment, morphology"
         uuid entity_id "Reference to entity"
@@ -205,8 +223,8 @@ erDiagram
     %% ========================================================================
 
     export_job {
-        uuid export_id PK
-        varchar export_format "tmx, conllu, json, pytorch"
+        uuid id PK
+        varchar format "tmx, conllu, json, pytorch"
         jsonb filter_criteria "What to export"
         text output_path
         bigint file_size_bytes
