@@ -17,25 +17,42 @@ erDiagram
     source ||--o{ document : "contains"
     source {
         bigint id PK "GENERATED ALWAYS AS IDENTITY"
-        varchar name
-        enum type "jw_org, biblical, manual, community"
+        varchar(512) name 
+        varchar(512) author
+        varchar(256) publisher
+        varchar(128) licence
         text url
-        text description
-        %% TODO: metadata should be its own defined columns
-        jsonb metadata
         timestamp created_at
         timestamp updated_at
     }
     
+    document_group {
+        bigint id PK "GENERATED ALWAYS AS IDENTITY"
+        varchar name "e. g. The Bible: Jehova Witnesses Edition"
+        text description
+        jsonb metadata
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    document_group ||--o{ document : "includes"
     document {
         bigint id PK "GENERATED ALWAYS AS IDENTITY"
         bigint source_id FK
-        %% TODO: Should we remove this and just use title?
-        varchar identifier "e.g., Genesis_1"
-        varchar title
-        enum language "tsz, es, en"
+        varchar title "e. g. The Bible New International Version"
+        enum genre "religious, educational, conversational, narrative"
+        enum lang "tsz, es, en"
+        enum tsz_dialect "Values: lacustre, central, serrana. NULL if lang!=tsz"
         %% TODO: expand metadata in its own columns
         jsonb metadata
+
+        text raw_text "Original document text, unmodified"
+        text full_text "Full document text, formatted to be ready to take sample for training"
+        tsvector text_vector "Optimization for thematic full-text search"
+        double quality "Fuzzy number between 0 and 1"
+
+        bigint document_group_id FK "Group of parallel documents"
+
         timestamp created_at
         timestamp updated_at
     }
@@ -49,24 +66,17 @@ erDiagram
         bigint id PK "GENERATED ALWAYS AS IDENTITY"
         bigint document_id FK
         integer index
-        enum language "tsz, es, en"
-        %% TODO: Consider a unique clean sentence as "text"
-        %%       instead of original_text and normalized_text
-        text text "Original sentence"
-        text normalized_text "Cleaned version"
+        enum lang "tsz, es, en; the specific language of a sentence"
+        enum tsz_dialect "Values: lacustre, central, serrana. NULL if lang!=tsz"
+        jsonb tsz_dialectal_features
+        text string "string ready to be used in models"
+        %% TODO: Is this tsvector really useful?
+        tsvector text_vec "Optimization for thematic search within sentences"
 
-        tsvector text_vector "Full-text search"
-
-        %% TODO: consider removing morphemes and just use morphosyntactic annotations
-        %%       and some kind of index for spliting the word into morphemes
-        text[] morphemes "Morpheme array"
-        text[] morphological_tags "Tags for morphemes"
-        %% TODO: remove tsz dialect 
-        enum dialect "central, western, eastern"
-        jsonb dialectal_features
         geometry collection_location "PostGIS point"
         jsonb metadata
-        enum quality_status "raw, auto_aligned, reviewed"
+        double quality "Fuzzy number between 0 and 1"
+
         timestamp created_at
         timestamp updated_at
     }
@@ -99,8 +109,6 @@ erDiagram
     %% ========================================================================
 
     sentence ||--o{ morphological_annotation : "has"
-    %% TODO: Make morphological annotations just be the allowed symbols for annotations,
-    %%       not the actual annotations themselves!
     morphological_annotation {
         bigint id PK "GENERATED ALWAYS AS IDENTITY"
         bigint sentence_id FK
