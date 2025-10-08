@@ -94,7 +94,7 @@ erDiagram
         bigint es_sentence_id FK
         enum alignment_method "fast_align, awesome_align, manual"
         decimal alignment_score "0-1 confidence"
-        enum quality_status "auto_aligned, reviewed, validated"
+        enum quality_status "raw, auto_aligned, reviewed, validated, corrected, rejected"
         jsonb word_alignments "Word-level data"
         varchar corrected_by "User who corrected"
         text correction_notes
