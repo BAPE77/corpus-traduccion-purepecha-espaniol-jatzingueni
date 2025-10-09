@@ -41,7 +41,7 @@ DROP TABLE IF EXISTS sources CASCADE;
 DROP TYPE IF EXISTS language_code CASCADE;
 DROP TYPE IF EXISTS document_genre CASCADE;
 DROP TYPE IF EXISTS alignment_method CASCADE;
-DROP TYPE IF EXISTS quality_status CASCADE;
+DROP TYPE IF EXISTS processing_status CASCADE;
 DROP TYPE IF EXISTS purepecha_dialect CASCADE;
 
 -- Note: Extensions are not dropped as they may be used by other databases
@@ -83,14 +83,43 @@ CREATE TYPE alignment_method AS ENUM (
     'eflomal'           -- Eflomal alignment tool
 );
 
--- Quality status
-CREATE TYPE quality_status AS ENUM (
-    'raw',              -- Unprocessed
-    'auto_aligned',     -- Automatically aligned
-    'reviewed',         -- Human reviewed
-    'validated',        -- Quality validated
-    'corrected',        -- Manually corrected
-    'rejected'          -- Quality rejected
+-- Processing status of data entries on the corpus
+/**
+ * IMPORTANT: valid state transitions should be:
+ *     Initial state: raw
+        ```mermaid
+            stateDiagram-v2
+                [*] --> raw: Start
+                
+                raw --> machine_generated: machine_algorithm
+                raw --> human_generated: human_feedback
+
+                machine_generated --> raw: review → redo
+                machine_generated --> validated: review → approve
+                machine_generated --> rejected: review → reject
+
+                human_generated --> raw: review → redo
+                human_generated --> validated: review → approve
+                human_generated --> rejected: review → reject
+
+                
+                note right of validated
+                    Data included in corpus
+                end note
+                
+                note right of rejected
+                    Data excluded from corpus, stored for future analysis
+                end note
+        ```
+ * TODO: Implement state machine verification for preventing invalid transitions
+         of processing_status values.
+ */
+CREATE TYPE processing_status AS ENUM (
+    'raw',               -- Ready to be processed
+    'machine_generated', -- Machine generated
+    'human_generated',   -- Human generated
+    'validated',         -- Data is ready to use
+    'rejected'           -- Data is not suitable for use
 );
 
 -- Purépecha dialects (updated regional classification)
@@ -145,8 +174,13 @@ CREATE TABLE documents (
     full_text TEXT,         -- Formatted text ready for training
     text_vector TSVECTOR,   -- Full-text search optimization
     
-    -- Quality metric
-    quality DOUBLE PRECISION CHECK (quality >= 0 AND quality <= 1),
+    -- Overall quality metric
+    human_lang_quality DOUBLE PRECISION CHECK (
+        human_lang_quality >= 0 AND human_lang_quality <= 1
+    ),
+    machine_lang_confidence DOUBLE PRECISION CHECK (
+        machine_lang_confidence >= 0 AND machine_lang_confidence <= 1
+    ),
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -161,7 +195,7 @@ CREATE TABLE documents (
 -- SENTENCES AND SEGMENTS
 -- ============================================================================
 
--- Sentences table (both Purépecha and Spanish)
+-- Sentences table (from all supported languages)
 CREATE TABLE sentences (
     id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     document_id BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
@@ -183,8 +217,14 @@ CREATE TABLE sentences (
     metadata JSONB DEFAULT '{}',
     
     -- Quality metric
-    quality DOUBLE PRECISION CHECK (quality >= 0 AND quality <= 1),
-    
+    processing_status processing_status DEFAULT 'raw',
+    quality DOUBLE PRECISION CHECK (
+        quality >= 0 AND quality <= 1
+    ),
+    confidence DOUBLE PRECISION CHECK (
+        confidence >= 0 AND confidence <= 1
+    ),
+
     -- Timestamps
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -210,11 +250,16 @@ CREATE TABLE alignments (
     
     -- Alignment metadata
     alignment_method alignment_method NOT NULL,
-    alignment_score DECIMAL(5,4),  -- Confidence score (0-1)
     
     -- Quality tracking
-    quality_status quality_status DEFAULT 'auto_aligned',
-    
+    processing_status processing_status DEFAULT 'raw',
+    confidence DOUBLE PRECISION CHECK ( -- Replaces former alignment_score
+        confidence >= 0 AND confidence <= 1
+    ),
+    quality DOUBLE PRECISION CHECK (
+        quality >= 0 AND quality <= 1
+    ),
+
     -- Word-level alignment data (stored as JSONB)
     word_alignments JSONB,  -- Format: [{"src_idx": 0, "tgt_idx": 1, "score": 0.95}, ...]
     
@@ -299,6 +344,11 @@ CREATE TABLE pipeline_runs (
 );
 
 -- Quality metrics for alignments
+-- TODO: redefine role of this entity as it talks about aggregated metrics
+--       of translation quality of individual training data on a pipeline run, 
+--       a thing that does not make sense. Maybe making this entity just only
+--       listing metrics of a running model with a certain training data and a
+--       certain evaluation set?
 CREATE TABLE alignment_quality_metrics (
     id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     alignment_id BIGINT REFERENCES alignments(id) ON DELETE CASCADE,
