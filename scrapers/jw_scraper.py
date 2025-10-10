@@ -147,16 +147,50 @@ class JWScraper:
         return esURL, id
 
     def segmentSentences(self, paragraphs):
+        bibleRefPattern = re.compile(r'\([^\)]*\d+[:]\d+[^\)]*\)')
+        leadingNumberPattern = re.compile(r'^\s*\d+\s*')
+        enumMarker = re.compile(
+            r'(?:(?<=^)|(?<=\s)|(?<=:)|(?<=,))\s*(?:y|ka)?\s*(\d+|[a-zA-Z]+)[.)]\s*(?:["“]?\s*¿?)',
+            re.IGNORECASE
+        )
         sentences = []
-        sentencePattern = re.compile(r'[.!?:¿\d]+\s*')
-        
-        for p in paragraphs:
-            parts = sentencePattern.split(p)
-            for part in parts:
-                part = part.strip()
-                if part and len(part) > 10:
-                    sentences.append(part)
-        
+
+        for paragraph in paragraphs:
+            text = paragraph.strip()
+            text = bibleRefPattern.sub('', text)
+            text = leadingNumberPattern.sub('', text)
+            text = text.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
+            marked = enumMarker.sub('|||ENUM|||', text)
+            rawParts = [p.strip() for p in marked.split('|||ENUM|||') if p.strip()]
+
+            sentencePattern = re.compile(r'(.*?)([.!?]+(?:["\)\]\}]*)?(?:[,;:]*\s+|$))', re.S)
+
+            for part in rawParts:
+                subparts = []
+                i = 0
+                for m in sentencePattern.finditer(part):
+                    piece = (m.group(1) + m.group(2)).strip()
+                    if piece:
+                        subparts.append(piece)
+                    i = m.end()
+                if i < len(part):
+                    leftover = part[i:].strip()
+                    if leftover:
+                        subparts.append(leftover)
+                if not subparts:
+                    subparts = [part]
+                for sp in subparts:
+                    sp = sp.strip()
+                    sp = re.sub(r'\s+([?.!,;:])', r'\1', sp)
+                    sp = sp.strip(' \'"()[]{}')
+                    if sp.startswith('¿') or sp.startswith('¡'):
+                        sp = sp[1:].lstrip()
+                    sp = enumMarker.sub('', sp).strip()
+                    sp = sp.replace('"', '').replace("'", '').strip()
+                    sp = re.sub(r'\s+([?.!])', r'\1', sp)
+                    sp = re.sub(r'^[^A-ZÁÉÍÓÚÑÄËÏÖÜ]+', '', sp)
+                    if sp and len(sp) > 1:
+                        sentences.append(sp)
         return sentences
 
     def saveCSV(self, articles):

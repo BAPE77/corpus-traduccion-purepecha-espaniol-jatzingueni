@@ -2,13 +2,13 @@ import re
 
 def segmentSentences(paragraphs):
     sentences = []
-    sentencePattern = re.compile(r'[.!?:¿\d\(\“]+\s*')
+    sentencePattern = re.compile(r'[.!?\d¿]+\s+')
     
     for p in paragraphs:
         parts = sentencePattern.split(p)
         for part in parts:
             part = part.strip()
-            if part and re.match(r'^[a-zA-Z]+', part):
+            if part: #and len(part) > 3 and re.match(r'^[a-zA-Z]+', part):
                 sentences.append(part)
     
     return sentences
