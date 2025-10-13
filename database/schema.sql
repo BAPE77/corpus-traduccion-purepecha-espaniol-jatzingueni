@@ -33,6 +33,8 @@ DROP TABLE IF EXISTS pipeline_runs CASCADE;
 DROP TABLE IF EXISTS morphological_annotations CASCADE;
 DROP TABLE IF EXISTS alignments CASCADE;
 DROP TABLE IF EXISTS sentences CASCADE;
+DROP TABLE IF EXISTS document_section CASCADE;
+DROP TABLE IF EXISTS document_section_type CASCADE;
 DROP TABLE IF EXISTS documents CASCADE;
 DROP TABLE IF EXISTS document_groups CASCADE;
 DROP TABLE IF EXISTS sources CASCADE;
@@ -185,10 +187,62 @@ CREATE TABLE documents (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     
-    CONSTRAINT check_tsz_dialect CHECK (
-        (lang = 'tsz' AND tsz_dialect IS NOT NULL) OR 
-        (lang != 'tsz' AND tsz_dialect IS NULL)
+    CONSTRAINT enforce_tsz_dialect CHECK (
+        (lang = 'tsz' AND tsz_dialect IS NULL) OR 
+        (lang != 'tsz' AND tsz_dialect IS NOT NULL)
     )
+);
+
+/**
+ * Type definition for a section inside a specific document
+ * 
+ * These can be the generic name of a text structure inside a document
+ * including the document itself. These are like "chapter", "sentence", 
+ * "part", "book", "article", etc.
+ * To make this structure definitions useful we need to define to what level
+ * inside the document they belong (e. g. "verse" is level 1 and "paragraph" is
+ * level 2). And because documents have different structures we need to link
+ * these definitions to a specific document.
+ */
+CREATE TABLE document_section_type (
+    id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    document_id BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    name VARCHAR(128) NOT NULL,
+    -- TODO: Enforce that a document has consecutive non-repetitive levels
+    level INTEGER NOT NULL CHECK (level > 0)
+);
+
+-- TODO: document what exactly a document_section is
+CREATE TABLE document_section (
+    id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    type_id BIGINT NOT NULL REFERENCES document_section_type(id) ON DELETE CASCADE,
+    -- TODO: Enforce that parents must be a different kind and the exact
+    --       superior level as defined in `document_section_type`
+    parent_section BIGINT REFERENCES document_section(id) ON DELETE CASCADE, -- This can be NULL for top-level sections
+    document_id BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    sibling_pos BIGINT NOT NULL, -- Order within parent (e. g. value 2 for chapter Genesis II)
+    name VARCHAR(128) NOT NULL,
+    lang language_code[] NOT NULL, -- A document section can have multiple languages
+
+    token_count BIGINT NOT NULL,
+
+    -- TODO: update text_vec by trigger sensible to its descendents of type `sentence`
+    text_vec TSVECTOR,   -- Full-text search optimization within document structures
+
+    -- Aggregated quality metrics, these should be computed from its descendents
+    -- and be weighted averages of their descendents.
+    quality DOUBLE PRECISION CHECK (
+        quality >= 0 AND quality <= 1
+    ),
+    confidence DOUBLE PRECISION CHECK (
+        confidence >= 0 AND confidence <= 1
+    ),
+
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT unique_document_section UNIQUE (parent_section, sibling_pos)
 );
 
 -- ============================================================================
@@ -198,25 +252,25 @@ CREATE TABLE documents (
 -- Sentences table (from all supported languages)
 CREATE TABLE sentences (
     id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    parent_id BIGINT NOT NULL REFERENCES document_section(id) ON DELETE CASCADE,
     document_id BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    index INTEGER NOT NULL,  -- Order within document
+    -- TODO: enforce that this type is of level 1
+    type_id BIGINT NOT NULL REFERENCES document_section_type(id) ON DELETE CASCADE,
+    sibling_pos INTEGER NOT NULL,  -- Order within parent document section
     lang language_code NOT NULL,
     tsz_dialect purepecha_dialect,  -- Only applicable when lang='tsz'
     tsz_dialectal_features JSONB DEFAULT '{}',
     
     -- Main text content
-    string TEXT NOT NULL,  -- String ready to be used in models
-    
-    -- Full-text search vector (updated by trigger)
-    text_vec TSVECTOR,
+    text TEXT NOT NULL,  -- String ready to be used in models
     
     -- Geospatial data for dialectal mapping
     collection_location GEOMETRY(Point, 4326),  -- Where this variant was collected
     
     -- Metadata
     metadata JSONB DEFAULT '{}',
-    
-    -- Quality metric
+
+    -- Quality metrics
     processing_status processing_status DEFAULT 'raw',
     quality DOUBLE PRECISION CHECK (
         quality >= 0 AND quality <= 1
@@ -247,7 +301,8 @@ CREATE TABLE alignments (
     -- Source and target sentences
     tsz_sentence_id BIGINT NOT NULL REFERENCES sentences(id) ON DELETE CASCADE,
     es_sentence_id BIGINT NOT NULL REFERENCES sentences(id) ON DELETE CASCADE,
-    
+    -- TODO: add support for english alignments and make it scalable to n languages
+
     -- Alignment metadata
     alignment_method alignment_method NOT NULL,
     
@@ -261,6 +316,7 @@ CREATE TABLE alignments (
     ),
 
     -- Word-level alignment data (stored as JSONB)
+    -- TODO: is word level alignment enough for purepecha? Take for example other translations to agglutinative languages like German
     word_alignments JSONB,  -- Format: [{"src_idx": 0, "tgt_idx": 1, "score": 0.95}, ...]
     
     -- Manual correction tracking
@@ -282,11 +338,7 @@ CREATE TABLE alignments (
 -- MORPHOLOGICAL ANNOTATIONS (Purépecha agglutinative features)
 -- ============================================================================
 
--- ============================================================================
--- MORPHOLOGICAL ANNOTATIONS (Purépecha agglutinative features)
--- ============================================================================
-
--- Token-level morphological analysis
+-- Morpheme-level morphosyntactic analysis
 CREATE TABLE morphological_annotations (
     id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     sentence_id BIGINT NOT NULL REFERENCES sentences(id) ON DELETE CASCADE,
