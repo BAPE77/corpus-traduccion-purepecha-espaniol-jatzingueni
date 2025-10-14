@@ -146,61 +146,138 @@ class JWScraper:
         esURL = esLink['href']
         return esURL, id
 
-    def segmentSentences(self, paragraphs):
-        bibleRefPattern = re.compile(r'\([^\)]*\d+[:]\d+[^\)]*\)')
-        leadingNumberPattern = re.compile(r'^\s*\d+\s*')
-        enumMarker = re.compile(
-            r'(?:(?<=^)|(?<=\s)|(?<=:)|(?<=,))\s*(?:y|ka)?\s*(\d+|[a-zA-Z]+)[.)]\s*(?:["“]?\s*¿?)',
-            re.IGNORECASE
+    def segmentSentences(self, paragraph):
+        """
+        Segmenta UN pÃ¡rrafo en oraciones individuales de manera mÃ¡s robusta.
+        """
+        if not paragraph or not paragraph.strip():
+            return []
+        
+        text = paragraph.strip()
+        
+        # Limpiar caracteres especiales problemÃ¡ticos
+        text = text.replace('"', '"').replace('"', '"')
+        text = text.replace(''', "'").replace(''', "'")
+        text = text.replace('â€¦', '...')
+        
+        # Remover referencias bÃ­blicas entre parÃ©ntesis
+        text = re.sub(r'\([^\)]*\d+[:]\d+[^\)]*\)', '', text)
+        
+        # Remover nÃºmeros iniciales de pÃ¡rrafo
+        text = re.sub(r'^\s*\d+\s+', '', text)
+        
+        # Patrones para dividir oraciones
+        # Busca puntos, signos de exclamaciÃ³n o interrogaciÃ³n seguidos de espacio y mayÃºscula
+        sentence_endings = re.compile(
+            r'([.!?]+)\s+(?=[A-ZÃÃ‰ÃÃ“ÃšÃ‘Ã„Ã‹ÃÃ–ÃœÂ¿Â¡])',
+            re.UNICODE
         )
+        
+        # Dividir en oraciones preliminares
+        parts = sentence_endings.split(text)
+        
         sentences = []
-
-        for paragraph in paragraphs:
-            text = paragraph.strip()
-            text = bibleRefPattern.sub('', text)
-            text = leadingNumberPattern.sub('', text)
-            text = text.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
-            marked = enumMarker.sub('|||ENUM|||', text)
-            rawParts = [p.strip() for p in marked.split('|||ENUM|||') if p.strip()]
-
-            sentencePattern = re.compile(r'(.*?)([.!?]+(?:["\)\]\}]*)?(?:[,;:]*\s+|$))', re.S)
-
-            for part in rawParts:
-                subparts = []
-                i = 0
-                for m in sentencePattern.finditer(part):
-                    piece = (m.group(1) + m.group(2)).strip()
-                    if piece:
-                        subparts.append(piece)
-                    i = m.end()
-                if i < len(part):
-                    leftover = part[i:].strip()
-                    if leftover:
-                        subparts.append(leftover)
-                if not subparts:
-                    subparts = [part]
-                for sp in subparts:
-                    sp = sp.strip()
-                    sp = re.sub(r'\s+([?.!,;:])', r'\1', sp)
-                    sp = sp.strip(' \'"()[]{}')
-                    if sp.startswith('¿') or sp.startswith('¡'):
-                        sp = sp[1:].lstrip()
-                    sp = enumMarker.sub('', sp).strip()
-                    sp = sp.replace('"', '').replace("'", '').strip()
-                    sp = re.sub(r'\s+([?.!])', r'\1', sp)
-                    sp = re.sub(r'^[^A-ZÁÉÍÓÚÑÄËÏÖÜ]+', '', sp)
-                    if sp and len(sp) > 1:
-                        sentences.append(sp)
+        i = 0
+        while i < len(parts):
+            if i + 1 < len(parts) and parts[i+1] in ['.', '!', '?', '..', '...', '!!', '??', '.!', '!?', '?.']:
+                # Combinar texto con su puntuaciÃ³n
+                sentence = (parts[i] + parts[i+1]).strip()
+                i += 2
+            else:
+                sentence = parts[i].strip()
+                i += 1
+            
+            if sentence:
+                # Limpiar la oraciÃ³n
+                sentence = sentence.strip(' \'"()[]{}')
+                
+                # Remover caracteres de apertura huÃ©rfanos
+                sentence = re.sub(r'^[Â¿Â¡]+\s*', '', sentence)
+                
+                # Remover enumeraciones al inicio (a), b), 1), etc.)
+                sentence = re.sub(r'^[a-zA-Z0-9]+[.)]\s*', '', sentence)
+                
+                # Remover comillas huÃ©rfanas
+                sentence = sentence.replace('"', '').replace("'", '')
+                
+                # Normalizar espacios antes de puntuaciÃ³n
+                sentence = re.sub(r'\s+([?.!,;:])', r'\1', sentence)
+                
+                # Solo guardar si la oraciÃ³n tiene contenido significativo
+                # Debe tener al menos 10 caracteres y contener letras
+                if len(sentence) >= 10 and re.search(r'[a-zÃ¡Ã©Ã­Ã³ÃºÃ±A-ZÃÃ‰ÃÃ“ÃšÃ‘]', sentence):
+                    sentences.append(sentence)
+        
         return sentences
+
+    def calculateSimilarity(self, text1, text2):
+        """
+        Calcula similitud bÃ¡sica entre dos textos basada en longitud.
+        Retorna un score de 0 a 1.
+        """
+        if not text1 or not text2:
+            return 0.0
+        
+        len1 = len(text1)
+        len2 = len(text2)
+        
+        if len1 == 0 or len2 == 0:
+            return 0.0
+        
+        # Ratio de longitud (cuÃ¡n similares son en tamaÃ±o)
+        ratio = min(len1, len2) / max(len1, len2)
+        return ratio
+
+    def alignParagraphs(self, tszParagraphs, esParagraphs):
+        """
+        Alinea pÃ¡rrafos entre dos idiomas basÃ¡ndose en similitud de longitud.
+        Retorna lista de tuplas (tszPara, esPara, confidence).
+        """
+        aligned = []
+        
+        # Si tienen la misma cantidad, asumir alineaciÃ³n 1:1
+        if len(tszParagraphs) == len(esParagraphs):
+            for i in range(len(tszParagraphs)):
+                similarity = self.calculateSimilarity(tszParagraphs[i], esParagraphs[i])
+                aligned.append((tszParagraphs[i], esParagraphs[i], similarity))
+            return aligned
+        
+        # Si son diferentes, intentar alinear por similitud de longitud
+        usedEs = set()
+        
+        for tszPara in tszParagraphs:
+            bestMatch = None
+            bestScore = 0.0
+            bestIdx = -1
+            
+            for idx, esPara in enumerate(esParagraphs):
+                if idx in usedEs:
+                    continue
+                
+                score = self.calculateSimilarity(tszPara, esPara)
+                if score > bestScore:
+                    bestScore = score
+                    bestMatch = esPara
+                    bestIdx = idx
+            
+            if bestMatch and bestScore > 0.3:  # Umbral mÃ­nimo de similitud
+                aligned.append((tszPara, bestMatch, bestScore))
+                usedEs.add(bestIdx)
+            else:
+                # Sin buena coincidencia, agregar con pÃ¡rrafo vacÃ­o
+                aligned.append((tszPara, '', 0.0))
+        
+        return aligned
 
     def saveCSV(self, articles):
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         sentencesFile = self.outputDir / f'sentences_{timestamp}.csv'
+        
         with open(sentencesFile, 'w', encoding='utf-8', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([
-                'article_id', 'sentence_number',
-                'purepecha', 'spanish'
+                'article_id', 'paragraph_number', 'sentence_number',
+                'purepecha', 'spanish', 'alignment_confidence'
             ])
 
             for article in articles:
@@ -208,32 +285,61 @@ class JWScraper:
                     continue
 
                 articleID = article['article_id']
-                tszSentences = article['tsz_sentences']
-                esSentences = article['es_sentences']
-
-                maxLen = max(len(tszSentences), len(esSentences))
-
-                for i in range(maxLen):
-                    tszSent = tszSentences[i] if i < len(tszSentences) else ''
-                    esSent = esSentences[i] if i < len(esSentences) else ''
-                    writer.writerow([articleID, i + 1, tszSent, esSent])
+                
+                # Iterar por cada pÃ¡rrafo alineado
+                for paragraphIdx, paragraphData in enumerate(article['paragraph_pairs'], start=1):
+                    tszSentences = paragraphData['tsz_sentences']
+                    esSentences = paragraphData['es_sentences']
+                    confidence = paragraphData['confidence']
+                    
+                    # Solo procesar si hay contenido en al menos un idioma
+                    if not tszSentences and not esSentences:
+                        continue
+                    
+                    maxLen = max(len(tszSentences), len(esSentences))
+                    
+                    # Alinear oraciones dentro de cada pÃ¡rrafo
+                    for sentIdx in range(maxLen):
+                        tszSent = tszSentences[sentIdx] if sentIdx < len(tszSentences) else ''
+                        esSent = esSentences[sentIdx] if sentIdx < len(esSentences) else ''
+                        
+                        # Solo escribir si hay contenido en al menos uno de los idiomas
+                        if tszSent or esSent:
+                            writer.writerow([
+                                articleID, 
+                                paragraphIdx, 
+                                sentIdx + 1, 
+                                tszSent, 
+                                esSent,
+                                f"{confidence:.2f}"
+                            ])
         
         metadataFile = self.outputDir / f'metadata_{timestamp}.json'
         metadata = []
         for article in articles:
             if article:
+                totalTszSentences = sum(len(p['tsz_sentences']) for p in article['paragraph_pairs'])
+                totalEsSentences = sum(len(p['es_sentences']) for p in article['paragraph_pairs'])
+                avgConfidence = sum(p['confidence'] for p in article['paragraph_pairs']) / len(article['paragraph_pairs'])
+                
                 metadata.append({
                     'article_id': article['article_id'],
                     'tsz_title': article['tsz']['title'],
                     'es_title': article['es']['title'],
-                    'tsz_title': article['tsz']['url'],
-                    'es_title': article['es']['url'],
-                    'tsz_sentence_count': len(article['tsz_sentences']),
-                    'es_sentence_count': len(article['es_sentences']),
+                    'tsz_url': article['tsz']['url'],
+                    'es_url': article['es']['url'],
+                    'paragraph_count': len(article['paragraph_pairs']),
+                    'tsz_sentence_count': totalTszSentences,
+                    'es_sentence_count': totalEsSentences,
+                    'avg_alignment_confidence': round(avgConfidence, 2),
                     'collected_at': article['tsz']['collected_at']
                 })
         with open(metadataFile, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, ensure_ascii=False, indent=2)
+
+        print(f"\nArchivos guardados:")
+        print(f"  - {sentencesFile}")
+        print(f"  - {metadataFile}")
 
     def scrapeParallelArticle(self, tszURL):
         esURL, docID = self.findESURL(tszURL)
@@ -243,14 +349,32 @@ class JWScraper:
         if not tszArt or not esArt:
             return None
         
-        tszSentences = self.segmentSentences(tszArt['paragraphs'])
-        esSentences = self.segmentSentences(esArt['paragraphs'])
+        # Alinear pÃ¡rrafos primero
+        alignedParagraphs = self.alignParagraphs(
+            tszArt['paragraphs'], 
+            esArt['paragraphs']
+        )
+        
+        # Procesar cada par de pÃ¡rrafos alineados
+        paragraphPairs = []
+        
+        for i, (tszPara, esPara, confidence) in enumerate(alignedParagraphs, start=1):
+            # Segmentar cada pÃ¡rrafo en oraciones
+            tszSentences = self.segmentSentences(tszPara) if tszPara else []
+            esSentences = self.segmentSentences(esPara) if esPara else []
+            
+            paragraphPairs.append({
+                'paragraph_number': i,
+                'tsz_sentences': tszSentences,
+                'es_sentences': esSentences,
+                'confidence': confidence
+            })
+        
         return {
             'article_id': docID,
             'tsz': tszArt,
             'es': esArt,
-            'tsz_sentences': tszSentences,
-            'es_sentences': esSentences,
+            'paragraph_pairs': paragraphPairs
         }
 
     def run(self, maxArticles=10, category='magazines'):
@@ -274,10 +398,13 @@ class JWScraper:
                 if article:
                     scrapedArticles.append(article)
                     successful += 1
+                    avgConf = sum(p['confidence'] for p in article['paragraph_pairs']) / len(article['paragraph_pairs'])
+                    print(f"âœ“ ArtÃ­culo {article['article_id']} - {len(article['paragraph_pairs'])} pÃ¡rrafos (confianza: {avgConf:.2f})")
                 else:
                     failed += 1
+                    print(f"âœ— Fallo al extraer artÃ­culo")
             except Exception as e:
-                print(f"Error: {e}")
+                print(f"âœ— Error: {e}")
                 failed += 1
         
         if scrapedArticles:

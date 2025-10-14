@@ -50,13 +50,13 @@ def segmentSentences(paragraphs):
 
 symbolTimes = 90
 print("=="*symbolTimes)
-sentences = segmentSentences(["4 Parajtsïni marhuacheni konseju ma, jatsiskachi para kaxumbitiini  ka jiókuarhini eskachi no iámindu ambe míteska. Ísï jimbo, parajtsïni sési uérachini ambe ma, jatsiskachi para imani kʼuiripueni kurhakuni konseju ma enga sánderu ambe míteka eska jucha. Engachi no xarhatauaka indeni kualidadiichani Tata Diosï Jeobajtsïni no uaati jarhuatani ka sánderu úkua jukaati ísï úni eskaksï Biblieri konsejuecha na uandajka (Miq. 6:8; 1 Ped. 5:5). Joperu engachi kaxumbitiiska, sánderuchi jingontku jauaka parachi ísï úni eska Biblia na uandajka."])
+sentences = segmentSentences(["Exe je, úsïngachi na uéjki jandora uandontskuarheni Tata Diosï  Jeobani jingoni, ambe uéjkichi úsïnga aianguni, náki uéjki idioma jimbo ka nani uéjkichi jarhani ochi ónhakata"])
 for sentence in sentences:
     print(sentence)
 print(len(sentences))
 print("=="*symbolTimes)
-sentences = segmentSentences(["4 Para beneficiarnos de los buenos consejos que recibamos, tenemos que ser humildes y modestos. Debemos admitir que a menudo tomaremos mejores decisiones si le pedimos consejo a alguien que tenga más experiencia o sepa más que nosotros. Sin estas cualidades, Jehová no podrá ayudarnos y, entonces, no veremos la necesidad de aplicar los consejos que leamos en su Palabra (Miq. 6:8; 1 Ped. 5:5). Pero, si somos humildes, tendremos los  oídos abiertos a cualquier consejo que venga de la Biblia."])
-for sentence in sentences:
-    print(sentence)
-print(len(sentences))
-print("=="*symbolTimes)
+#sentences = segmentSentences(["4 Para beneficiarnos de los buenos consejos que recibamos, tenemos que ser humildes y modestos. Debemos admitir que a menudo tomaremos mejores decisiones si le pedimos consejo a alguien que tenga más experiencia o sepa más que nosotros. Sin estas cualidades, Jehová no podrá ayudarnos y, entonces, no veremos la necesidad de aplicar los consejos que leamos en su Palabra (Miq. 6:8; 1 Ped. 5:5). Pero, si somos humildes, tendremos los  oídos abiertos a cualquier consejo que venga de la Biblia."])
+#for sentence in sentences:
+#    print(sentence)
+#print(len(sentences))
+#print("=="*symbolTimes)
