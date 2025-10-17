@@ -65,7 +65,7 @@ flake8==7.3.0               # Linting
 mypy==1.18.2                # Type checking
 
 # Utilities
-python-dateutil==2.9.0.post0# Date/time utilities
+python-dateutil==2.9.0.post0 # Date/time utilities
 pytz==2025.2                # Timezone support
 
 # Export formats

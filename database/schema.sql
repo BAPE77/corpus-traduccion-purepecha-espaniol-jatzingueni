@@ -188,8 +188,8 @@ CREATE TABLE documents (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     
     CONSTRAINT enforce_tsz_dialect CHECK (
-        (lang = 'tsz' AND tsz_dialect IS NULL) OR 
-        (lang != 'tsz' AND tsz_dialect IS NOT NULL)
+        (lang = 'tsz' AND tsz_dialect IS NOT NULL) OR 
+        (lang != 'tsz' AND tsz_dialect IS NULL)
     )
 );
 
@@ -283,7 +283,7 @@ CREATE TABLE sentences (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     
-    CONSTRAINT sentences_document_index_unique UNIQUE (document_id, index),
+    CONSTRAINT sentences_document_sibling_pos_unique UNIQUE (document_id, sibling_pos),
     CONSTRAINT check_sentence_tsz_dialect CHECK (
         (lang = 'tsz' AND tsz_dialect IS NOT NULL) OR 
         (lang != 'tsz' AND tsz_dialect IS NULL)
